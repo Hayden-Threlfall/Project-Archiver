@@ -21,38 +21,40 @@ import config
 SKIPPED_FILES = []
 
 
-def export_folder(root_folder, output_folder, file_types, write_version, name_option, folder_preserve):
+def export_folder(root_folder, output_folder, file_types, write_version, name_option, folder_preserve, start_file=None):
     ao = AppObjects()
+    
+    all_files = [file for file in root_folder.dataFiles if file.fileExtension == "f3d"]
+    
+    for i, file in enumerate(all_files):
+        if start_file and file.name != start_file:
+            continue
+        start_file = None  # Reset start_file after finding it
+        
+        next_file = all_files[i+1].name if i+1 < len(all_files) else "COMPLETED"
+        save_progress(file.name, next_file)
+        
+        open_doc(file)
+        try:
+            output_name = get_name(write_version, name_option)
+            export_active_doc(output_folder, file_types, output_name)
+        except ValueError as e:
+            ao.ui.messageBox(str(e))
+        except AttributeError as e:
+            ao.ui.messageBox(str(e))
+            break
+        
+        ao.app.activeDocument.close(False)
 
     for folder in root_folder.dataFolders:
-
         if folder_preserve:
             new_folder = os.path.join(output_folder, folder.name, "")
-
             if not os.path.exists(new_folder):
                 os.makedirs(new_folder)
         else:
             new_folder = output_folder
-
-        export_folder(folder, new_folder, file_types, write_version, name_option, folder_preserve)
-
-    for file in root_folder.dataFiles:
-        if file.fileExtension == "f3d":
-            open_doc(file)
-            try:
-                output_name = get_name(write_version, name_option)
-                export_active_doc(output_folder, file_types, output_name)
-
-            # TODO add handling
-            except ValueError as e:
-                ao.ui.messageBox(str(e))
-
-            except AttributeError as e:
-                ao.ui.messageBox(str(e))
-                break
-                
-            # close current doc
-            ao.app.activeDocument.close(False)
+        
+        export_folder(folder, new_folder, file_types, write_version, name_option, folder_preserve, start_file)
 
 def open_doc(data_file):
     app = adsk.core.Application.get()
@@ -185,23 +187,19 @@ class ExportCommand(apper.Fusion360CommandBase):
 
         output_folder = input_values['output_folder']
         folder_preserve = input_values['folder_preserve_id']
-
-        # TODO broken?????
         file_types = inputs.itemById('file_types_input').listItems
-
         write_version = input_values['write_version']
         name_option = input_values['name_option_id']
         root_folder = ao.app.data.activeProject.rootFolder
 
-        # Make sure we have a folder not a file
         if not output_folder.endswith(os.path.sep):
             output_folder += os.path.sep
 
-        # Create the base folder for this output if doesn't exist
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-        export_folder(root_folder, output_folder, file_types, write_version, name_option, folder_preserve)
+        start_file, _ = load_progress()
+        export_folder(root_folder, output_folder, file_types, write_version, name_option, folder_preserve, start_file)
 
         if len(SKIPPED_FILES) > 0:
             ao.ui.messageBox(
@@ -244,3 +242,18 @@ class ExportCommand(apper.Fusion360CommandBase):
         version_input.isVisible = False
 
         update_name_inputs(inputs, 'Document Name')
+
+
+def load_progress():
+    try:
+        with open('D:\ProjectArchive3\export_progress.txt', 'r') as f:
+            lines = f.readlines()
+            return lines[0].strip(), lines[1].strip() if len(lines) > 1 else None
+    except FileNotFoundError:
+        return None, None
+    
+def save_progress(current_file, next_file):
+    with open('D:\ProjectArchive3\export_progress.txt', 'w') as f:
+        f.write(f"{current_file}\n{next_file}")
+        f.flush()
+        os.fsync(f.fileno())
