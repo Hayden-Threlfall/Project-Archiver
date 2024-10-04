@@ -76,4 +76,4 @@ Analytics
 [![Analytics](https://ga-beacon.appspot.com/UA-41076924-3/project-archiver)](https://github.com/igrigorik/ga-beacon)
 
 
-
+Lastly: Add a way to start back or start at a specific file. Better error management to find files the cause issues.

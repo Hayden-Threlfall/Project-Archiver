@@ -6,6 +6,8 @@
 #  This file is a component of Project-Archiver.                               ~
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import os
+import unicodedata
+import re
 
 import adsk.core
 import adsk.fusion
@@ -48,7 +50,9 @@ def export_folder(root_folder, output_folder, file_types, write_version, name_op
             except AttributeError as e:
                 ao.ui.messageBox(str(e))
                 break
-
+                
+            # close current doc
+            ao.app.activeDocument.close(False)
 
 def open_doc(data_file):
     app = adsk.core.Application.get()
@@ -96,9 +100,17 @@ def export_active_doc(folder, file_types, output_name):
             export_mgr.execute(export_options)
 
     if file_types.item(file_types.count - 1).isSelected:
-        stl_export_name = folder + output_name + '.stl'
-        stl_options = export_mgr.createSTLExportOptions(ao.design.rootComponent, stl_export_name)
-        export_mgr.execute(stl_options)
+        # Check if document contains any solid bodies
+        design = adsk.fusion.Design.cast(ao.product)
+        if design is not None:
+            root_comp = design.rootComponent
+            if root_comp.bRepBodies.count == 0:
+                # Skip this document if it contains no solid bodies
+                SKIPPED_FILES.append(ao.document.name)
+            else:
+                stl_export_name = folder + output_name + '.stl'
+                stl_options = export_mgr.createSTLExportOptions(ao.design.rootComponent, stl_export_name)
+                export_mgr.execute(stl_options)
 
 
 def dup_check(name):
@@ -131,8 +143,27 @@ def get_name(write_version, option):
     else:
         raise ValueError('Something strange happened')
 
+    # replace invalid characters in filename
+    output_name = slugify(output_name)
+        
     return output_name
 
+# Inspired by https://stackoverflow.com/questions/295135/turn-a-string-into-a-valid-filename
+def slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value)
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 def update_name_inputs(command_inputs, selection):
     command_inputs.itemById('write_version').isVisible = False
