@@ -17,6 +17,8 @@ import apper
 from apper import AppObjects
 
 import config
+import datetime
+import json
 
 SKIPPED_FILES = []
 
@@ -175,6 +177,7 @@ def update_name_inputs(command_inputs, selection):
 
 
 class ExportCommand(apper.Fusion360CommandBase):
+    
 
     def on_input_changed(self, command: adsk.core.Command, inputs: adsk.core.CommandInputs,
                          changed_input, input_values):
@@ -191,7 +194,7 @@ class ExportCommand(apper.Fusion360CommandBase):
         write_version = input_values['write_version']
         name_option = input_values['name_option_id']
         root_folder = ao.app.data.activeProject.rootFolder
-
+        
         if not output_folder.endswith(os.path.sep):
             output_folder += os.path.sep
 
@@ -207,6 +210,10 @@ class ExportCommand(apper.Fusion360CommandBase):
                     SKIPPED_FILES
                 )
             )
+            
+        ao.ui.messageBox(
+                "This File Exporter Is COMPLETED!"
+            )
 
         close_command = ao.ui.commandDefinitions.itemById(self.fusion_app.command_id_from_name(config.close_cmd_id))
         close_command.execute()
@@ -214,7 +221,8 @@ class ExportCommand(apper.Fusion360CommandBase):
     def on_create(self, command: adsk.core.Command, inputs: adsk.core.CommandInputs):
         global SKIPPED_FILES
         SKIPPED_FILES.clear()
-        default_dir = apper.get_default_dir(config.app_name)
+        #default_dir = apper.get_default_dir(config.app_name)
+        default_dir = 'D:\ProjectArchive3'
 
         inputs.addStringValueInput('output_folder', 'Output Folder:', default_dir)
 
@@ -222,10 +230,10 @@ class ExportCommand(apper.Fusion360CommandBase):
                                                          adsk.core.DropDownStyles.CheckBoxDropDownStyle)
         drop_input_list = drop_input_list.listItems
         drop_input_list.add('IGES', False)
-        drop_input_list.add('STEP', True)
+        drop_input_list.add('STEP', False)
         drop_input_list.add('SAT', False)
         drop_input_list.add('SMT', False)
-        drop_input_list.add('F3D', False)
+        drop_input_list.add('F3D', True)
         drop_input_list.add('STL', False)
 
         name_option_group = inputs.addDropDownCommandInput('name_option_id', 'File Name Option',
@@ -245,15 +253,49 @@ class ExportCommand(apper.Fusion360CommandBase):
 
 
 def load_progress():
+    progress_file = os.path.join('D:\ProjectArchive3', 'export_progress.txt')
     try:
-        with open('D:\ProjectArchive3\export_progress.txt', 'r') as f:
+        with open(progress_file, 'r') as f:
             lines = f.readlines()
-            return lines[0].strip(), lines[1].strip() if len(lines) > 1 else None
+            current_file = lines[0].strip()
+            next_file = lines[1].strip() if len(lines) > 1 else None
+            return current_file, next_file
     except FileNotFoundError:
         return None, None
     
 def save_progress(current_file, next_file):
-    with open('D:\ProjectArchive3\export_progress.txt', 'w') as f:
+    progress_file = os.path.join('D:\\ProjectArchive3\\', 'export_progress.txt')
+    with open(progress_file, 'w') as f:
         f.write(f"{current_file}\n{next_file}")
         f.flush()
         os.fsync(f.fileno())
+
+    # Create documentation file with file tree
+    doc_file = os.path.join('D:\\ProjectArchive3\\', 'export_documentation.txt')
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    def generate_tree(path, prefix=''):
+        tree = []
+        contents = sorted(os.listdir(path))
+        for i, item in enumerate(contents):
+            item_path = os.path.join(path, item)
+            if os.path.isdir(item_path):
+                if i == len(contents) - 1:
+                    tree.append(f"{prefix}└── {item}/")
+                    tree.extend(generate_tree(item_path, prefix + '    '))
+                else:
+                    tree.append(f"{prefix}├── {item}/")
+                    tree.extend(generate_tree(item_path, prefix + '│   '))
+            else:
+                if i == len(contents) - 1:
+                    tree.append(f"{prefix}└── {item}")
+                else:
+                    tree.append(f"{prefix}├── {item}")
+        return tree
+
+    with open(doc_file, 'a', encoding="utf-8") as f:
+        f.write(f"\n{timestamp} - Current: {current_file}, Next: {next_file}\n")
+        f.write("File Tree:\n")
+        tree = generate_tree('D:\\ProjectArchive3\\')
+        f.write('\n'.join(tree))
+        f.write('\n\n')
